@@ -55,7 +55,106 @@ url_crossroads = "https://crossroads.domainactive.com/api/v2/get-campaigns-info?
 
 crossroads_campaigns = "https://crossroads.domainactive.com/api/v2/get-campaigns?key="+crossroads_key
 
-def get_facebook_data(account):
+def get_facebook_campaigns(account):
+    facebook_campaigns = "https://graph.facebook.com/v19.0/act_"+account+"/campaigns?fields=id, name, effective_status&since="+start_date_format+"&until="+yesterday_format+"&access_token="+acces_token+"&limit=200"
+
+    logging.info(f"Intentando descargar datos de facebook...")
+    next_link = facebook_campaigns
+    while (next_link != None):
+        cur = conn.cursor()
+        try:
+            response = http.request('GET', next_link)
+            data = json.loads(response.data.decode('utf-8'))
+
+            # del JSON de respuesta nos interesa solo la data 
+            key_list = list(data.keys())
+            first_key = key_list[0]
+            if ('paging' in key_list):
+                paging = data['paging'].keys()
+                # mientras siga habiendo una siguiente pagina debemos procesar mas registros
+                if ('next' in paging):
+                    next_link = data['paging']['next']
+                else:
+                    next_link = None
+            else:
+                next_link = None
+            
+            for i in data[first_key]:
+                var1 = i['id']
+                var2 = i['name']
+                var3 = i['effective_status']
+                var4 = account
+                var5 = 'facebook'
+                cur.execute("""
+                    INSERT INTO """+db_schema+""".campaign (campaign_id, campaign_name, effective_status, account_id, data_source)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (campaign_id) DO UPDATE SET
+                    (campaign_name, effective_status, account_id, data_source) = (EXCLUDED.campaign_name, EXCLUDED.effective_status, EXCLUDED.account_id, EXCLUDED.data_source); 
+                    """,
+                (var1, var2, var3, var4, var5))
+                conn.commit()
+            cur.close()
+        except:
+            logging.error("Error al intentar insertar los datos",exc_info=True)
+            logging.error(response.status)
+            logging.error(response.data.decode('utf-8'))
+
+
+
+def get_facebook_adsets(account):
+    facebook_addsets = "https://graph.facebook.com/v19.0/act_"+account+"/adsets?fields=campaign_id, name, bid_amount,adset_id,daily_budget,status&level=adset&date_preset="+filter+"&access_token="+acces_token+"&limit=200"
+
+    logging.info(f"Intentando descargar datos de facebook...")
+    next_link = facebook_addsets
+    while (next_link != None):
+        cur = conn.cursor()
+        try:
+            response = http.request('GET', next_link)
+            data = json.loads(response.data.decode('utf-8'))
+
+            # del JSON de respuesta nos interesa solo la data 
+            key_list = list(data.keys())
+            first_key = key_list[0]
+            if ('paging' in key_list):
+                paging = data['paging'].keys()
+                # mientras siga habiendo una siguiente pagina debemos procesar mas registros
+                if ('next' in paging):
+                    next_link = data['paging']['next']
+                else:
+                    next_link = None
+            else:
+                next_link = None
+            
+            for i in data[first_key]:
+                var3 = var4 = None
+                var1 = i['id']
+                var2 = i['campaign_id']
+                if ('bid_amount' in i):
+                    var3 = i['bid_amount']
+                if  ('daily_budget' in i):
+                    var4 = i['daily_budget']
+                var5 = account
+                var6 = i['name']
+                var7 = i['status']
+                cur.execute("""
+                    INSERT INTO """+db_schema+""".adset (adset_id, campaign_id, bid_amount, daily_budget, account_id, adset_name, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (adset_id) DO UPDATE SET
+                    (bid_amount, daily_budget, account_id, adset_name, status) = (EXCLUDED.bid_amount, EXCLUDED.daily_budget, EXCLUDED.account_id, EXCLUDED.adset_name, EXCLUDED.status); 
+                    """,
+                (var1, var2, var3, var4, var5, var6, var7))
+                conn.commit()
+            cur.close()
+        except:
+            logging.error("Error al intentar insertar los datos",exc_info=True)
+            logging.error(response.status)
+            logging.error(response.data.decode('utf-8'))
+
+                
+
+
+
+def get_facebook_insights(account):
     url_facebook = "https://graph.facebook.com/v19.0/act_"+account+"/insights?fields=spend,impressions,clicks,objective,campaign_name,campaign_id,actions&level=campaign&date_preset="+filter+"&access_token="+acces_token+"&filtering=[{'field':'campaign.effective_status','operator':'IN','value':['ACTIVE','PAUSED','CAMPAIGN_PAUSED']}]&limit=200"
 
     logging.info(f"Intentando descargar datos de facebook...")
@@ -103,7 +202,7 @@ def get_facebook_data(account):
                     INSERT INTO """+db_schema+""".campaign (campaign_id, campaign_name, spend, clicks, impressions, purchase_value, data_source, date_start, date_stop, account_id)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (campaign_id) DO UPDATE SET
-                    (campaign_name, spend, clicks, impressions, purchase_value, date_start, date_stop, account_id) = (EXCLUDED.campaign_name, EXCLUDED.spend, EXCLUDED.clicks, EXCLUDED.impressions, EXCLUDED.purchase_value, EXCLUDED.date_start, EXCLUDED.date_stop, EXCLUDED.account_id); 
+                    (campaign_name, spend, clicks, impressions, purchase_value, date_start, date_stop, account_id, data_source) = (EXCLUDED.campaign_name, EXCLUDED.spend, EXCLUDED.clicks, EXCLUDED.impressions, EXCLUDED.purchase_value, EXCLUDED.date_start, EXCLUDED.date_stop, EXCLUDED.account_id, EXCLUDED.data_source); 
                     """,
                 (var1, var2, var3, var4, var5, var6,var7, var8, var9, var10))
                 conn.commit()
@@ -127,7 +226,7 @@ def get_domains():
             var3 = i['revenue_domain_name']
 
             cur.execute("""
-                INSERT INTO """+db_schema+""".domain (campaign_id, status, revenue_domain_name)
+                INSERT INTO """+db_schema+""".domains (campaign_id, status, revenue_domain_name)
                 VALUES (%s, %s, %s)
                 ON CONFLICT (campaign_id) DO UPDATE SET
                 (status, revenue_domain_name) = (EXCLUDED.status, EXCLUDED.revenue_domain_name); 
@@ -176,9 +275,11 @@ def get_crossroads_data():
         logging.error(response.status)
         logging.error(response.data.decode('utf-8'))
 
-get_crossroads_data()
-get_domains()
-logging.info(f"Descarga de crossroads finalizada.")
+#get_crossroads_data()
+#get_domains()
+#logging.info(f"Descarga de crossroads finalizada.")
 for account in facebook_accounts:
-    get_facebook_data(account)
+    get_facebook_campaigns(account)
+    get_facebook_insights(account)
+    get_facebook_adsets(account)
     logging.info(f"Descarga de facebook finalizada.")
