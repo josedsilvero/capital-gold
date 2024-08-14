@@ -275,9 +275,9 @@ def get_crossroads_data():
         logging.error(response.status)
         logging.error(response.data.decode('utf-8'))
 
-#get_crossroads_data()
-#get_domains()
-#logging.info(f"Descarga de crossroads finalizada.")
+get_crossroads_data()
+get_domains()
+logging.info(f"Descarga de crossroads finalizada.")
 for account in facebook_accounts:
     get_facebook_campaigns(account)
     get_facebook_insights(account)
