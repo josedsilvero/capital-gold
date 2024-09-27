@@ -5,6 +5,7 @@ import logging
 import datetime
 import sys
 import configparser
+import requests
 
 date_preset = None
 date_conversion = None
@@ -25,6 +26,8 @@ db_schema = config.get('common','db_schema')
 crossroads_key = config.get('api', 'crossroads_key')
 acces_token = config.get('api', 'acces_token')
 facebook_accounts = config.get('api','facebook_accounts').split("\n")
+tiktok_accounts = config.get('api','tiktok_accounts').split("\n")
+tiktok_token = config.get('api', 'tiktok_token')
 
 logging.basicConfig(level=logging.INFO, filename="campaigns_py_log.log",filemode="w",
                     format="%(asctime)s %(levelname)s %(message)s")
@@ -54,6 +57,8 @@ http = urllib3.PoolManager()
 url_crossroads = "https://crossroads.domainactive.com/api/v2/get-campaigns-info?key="+crossroads_key+"&start-date="+start_date_format+"&end-date="+yesterday_format
 
 crossroads_campaigns = "https://crossroads.domainactive.com/api/v2/get-campaigns?key="+crossroads_key
+
+url_tiktok = "https://business-api.tiktok.com/open_api/v1.3/campaign/get/?advertiser_id=7394547419775664129&page=1"
 
 def get_facebook_campaigns(account):
     facebook_campaigns = "https://graph.facebook.com/v19.0/act_"+account+"/campaigns?fields=id, name, effective_status&since="+start_date_format+"&until="+yesterday_format+"&access_token="+acces_token+"&limit=200"
@@ -149,10 +154,6 @@ def get_facebook_adsets(account):
             logging.error("Error al intentar insertar los datos",exc_info=True)
             logging.error(response.status)
             logging.error(response.data.decode('utf-8'))
-
-                
-
-
 
 def get_facebook_insights(account):
     url_facebook = "https://graph.facebook.com/v19.0/act_"+account+"/insights?fields=spend,impressions,clicks,objective,campaign_name,campaign_id,actions&level=campaign&date_preset="+filter+"&access_token="+acces_token+"&filtering=[{'field':'campaign.effective_status','operator':'IN','value':['ACTIVE','PAUSED','CAMPAIGN_PAUSED']}]&limit=200"
@@ -275,11 +276,130 @@ def get_crossroads_data():
         logging.error(response.status)
         logging.error(response.data.decode('utf-8'))
 
+def get_tiktok_campaigns(access_token, account):
+    url = 'https://business-api.tiktok.com/open_api/v1.3/campaign/get/?advertiser_id='+account+'&page_size=1000'
+
+    headers = {
+       "Access-Token": access_token,
+       "Content-Type": "application/json"
+    }
+
+    cur = conn.cursor()
+    try:
+        response = requests.get(url, headers=headers)
+        data = response.json()
+        for i in data['data']['list']:
+            var1 = i['campaign_id']
+            var2 = i['campaign_name']
+            var3 = i['operation_status']
+
+            cur.execute("""
+                INSERT INTO public.tik_tok_campaigns (campaign_id, campaign_name, primary_status)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (campaign_id) DO UPDATE SET
+                (campaign_name, primary_status) = (EXCLUDED.campaign_name, EXCLUDED.primary_status); 
+                """,
+            (var1, var2, var3))
+            conn.commit()
+        cur.close()
+
+        
+    except:
+        logging.error("Error al intentar insertar los datos",exc_info=True)
+        logging.error(response.status_code)
+    
+def get_tiktok_metrics(access_token, account):
+    url = 'https://business-api.tiktok.com/open_api/v1.3/report/integrated/get/?report_type=BASIC&advertiser_id='+account+'&lifetime=true&data_level=AUCTION_CAMPAIGN&dimensions=["campaign_id"]&start_date='+start_date_format+'&end_date='+yesterday_format+'&metrics=["campaign_name", "impressions", "clicks", "spend", "reach", "ctr", "conversion", "cost_per_conversion", "cpc"]&page_size=1000'
+    headers = {
+       "Access-Token": access_token,
+       "Content-Type": "application/json"
+    }
+
+    cur = conn.cursor()
+    logging.info(f"Intentado descargar datos de tiktok...")
+    try:
+        response = requests.get(url, headers=headers)
+        data = response.json()
+        for i in data['data']['list']:
+            var1 = i['dimensions']['campaign_id']
+            var2 = i['metrics']['campaign_name']
+            var3 = account
+            var4 = i['metrics']['conversion']
+            var5 = i['metrics']['cost_per_conversion']
+            var6 = i['metrics']['spend']
+            var7 = i['metrics']['ctr']
+            var8 = i['metrics']['clicks']
+            var9 = i['metrics']['cpc']
+            var10 = i['metrics']['impressions']
+
+            cur.execute("""
+                INSERT INTO public.tik_tok_campaigns (campaign_id, campaign_name, account_id, conversions, cost_per_conversion, cost, ctr, clicks, cpc, impressions)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s ,%s, %s)
+                ON CONFLICT (campaign_id) DO UPDATE SET
+                (campaign_name, account_id, conversions, cost_per_conversion, cost, ctr, clicks, cpc, impressions) = (EXCLUDED.campaign_name, EXCLUDED.account_id, EXCLUDED.conversions, EXCLUDED.cost_per_conversion, EXCLUDED.cost, EXCLUDED.ctr, EXCLUDED.clicks, EXCLUDED.cpc, EXCLUDED.impressions); 
+                """,
+            (var1, var2, var3, var4, var5, var6, var7, var8, var9, var10))
+            conn.commit()
+        cur.close()
+    except:
+       logging.error("Error al intentar insertar los datos",exc_info=True)
+       logging.error(response.status_code)
+
+    if response.status_code == 200:
+        return data['data']['list']
+    else:
+        raise Exception(f"Error fetching campaigns: {data['message']}")
+
+def get_tiktok_adgroups(access_token, account):
+    url = 'https://business-api.tiktok.com/open_api/v1.3/adgroup/get/?advertiser_id=7394547419775664129&page_size=1000&'
+    headers = {
+       "Access-Token": access_token,
+       "Content-Type": "application/json"
+    }
+
+    cur = conn.cursor()
+    try:
+        response = requests.get(url, headers=headers)
+        data = response.json()
+        for i in data['data']['list']:
+            var1 = i['adgroup_id']
+            var2 = i['campaign_id']
+            var3 = i['conversion_bid_price']
+            var4 = i['budget']
+            var5 = account
+            var6 = i['adgroup_name']
+            var7 = i['secondary_status']
+
+            cur.execute("""
+                INSERT INTO """+db_schema+""".tik_tok_adgroups (adgroup_id, campaign_id, conversion_bid, budget, account_id, adgroup_name, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (adgroup_id) DO UPDATE SET
+                (campaign_id, conversion_bid, budget, account_id, adgroup_name, status) = (EXCLUDED.campaign_id, EXCLUDED.conversion_bid, EXCLUDED.budget, EXCLUDED.account_id, EXCLUDED.adgroup_name, EXCLUDED.status); 
+                """,
+            (var1, var2, var3, var4, var5, var6, var7))
+            conn.commit()
+        cur.close()
+    except:
+       logging.error("Error al intentar insertar los datos",exc_info=True)
+       logging.error(response.status_code)
+
+    if response.status_code == 200:
+        return data['data']['list']
+    else:
+        raise Exception(f"Error fetching adgroups: {data['message']}")
+
 get_crossroads_data()
 get_domains()
 logging.info(f"Descarga de crossroads finalizada.")
+"""
 for account in facebook_accounts:
     get_facebook_campaigns(account)
     get_facebook_insights(account)
     get_facebook_adsets(account)
     logging.info(f"Descarga de facebook finalizada.")
+"""
+for account in tiktok_accounts:
+    get_tiktok_campaigns(tiktok_token, account)
+    get_tiktok_metrics(tiktok_token, account)
+    get_tiktok_adgroups(tiktok_token, account)
+    logging.info(f"Descarga de tiktok finalizada.")
