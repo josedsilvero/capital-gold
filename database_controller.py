@@ -351,7 +351,7 @@ def get_tiktok_metrics(access_token, account):
         raise Exception(f"Error fetching campaigns: {data['message']}")
 
 def get_tiktok_adgroups(access_token, account):
-    url = 'https://business-api.tiktok.com/open_api/v1.3/adgroup/get/?advertiser_id=7394547419775664129&page_size=1000&'
+    url = 'https://business-api.tiktok.com/open_api/v1.3/adgroup/get/?advertiser_id='+account+'&page_size=1000'
     headers = {
        "Access-Token": access_token,
        "Content-Type": "application/json"
@@ -391,13 +391,13 @@ def get_tiktok_adgroups(access_token, account):
 get_crossroads_data()
 get_domains()
 logging.info(f"Descarga de crossroads finalizada.")
-"""
+
 for account in facebook_accounts:
     get_facebook_campaigns(account)
     get_facebook_insights(account)
     get_facebook_adsets(account)
     logging.info(f"Descarga de facebook finalizada.")
-"""
+
 for account in tiktok_accounts:
     get_tiktok_campaigns(tiktok_token, account)
     get_tiktok_metrics(tiktok_token, account)
